@@ -160,7 +160,7 @@ async def make_bangumi_request(
             if 300 <= response.status_code < 400:
                 location = response.headers.get("Location")
                 if location:
-                    return {"Location": location, "status_code": response.status_code}
+                    return {"Location": location}
                 return {
                     "error": f"{response.status_code} redirect without Location",
                     "status_code": response.status_code,
@@ -1731,7 +1731,7 @@ async def get_user_collections(
     if subject_type is not None:
         query_params["subject_type"] = int(subject_type)
     if collection_type is not None:
-        query_params["type"] = collection_type
+        query_params["type"] = int(collection_type)
 
     response = await make_bangumi_request(
         method="GET",
@@ -1849,6 +1849,9 @@ async def update_subject_collection(
     if comment is not None:
         json_body["comment"] = comment
 
+    if not json_body:
+        return "No updates were provided; specify at least one field to update."
+
     response = await make_bangumi_request(
         method="POST",
         path=f"/v0/users/-/collections/{subject_id}",
@@ -1955,6 +1958,9 @@ async def update_episode_collection(
     """
     if not BANGUMI_TOKEN:
         return "BANGUMI_TOKEN is required for this operation."
+
+    if not episode_ids:
+        return "episode_ids cannot be empty; provide at least one episode ID."
 
     json_body = {
         "episode_id": episode_ids,
