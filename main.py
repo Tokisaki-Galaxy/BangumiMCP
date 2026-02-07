@@ -157,7 +157,8 @@ async def make_bangumi_request(
             )
 
             # Handle redirect responses (e.g., image endpoints) without attempting JSON parsing
-            if 300 <= response.status_code < 400:
+            # Only handle redirect statuses that are expected to carry a Location header
+            if response.status_code in (301, 302, 303, 307, 308):
                 location = response.headers.get("Location")
                 if location:
                     return {"Location": location}
@@ -165,6 +166,8 @@ async def make_bangumi_request(
                     "error": f"{response.status_code} redirect without Location",
                     "status_code": response.status_code,
                 }
+
+            # For other 3xx codes, let httpx handle them (or fail naturally)
 
             response.raise_for_status()
 
@@ -2110,7 +2113,14 @@ async def get_user_character_collection(
     details = f"Character collection for {username} on character {character_id}:\n"
     details += f"  ID: {char.get('id')}\n"
     details += f"  Name: {char.get('name')}\n"
-    details += f"  Comment: {char.get('comment') or 'N/A'}\n"
+    details += f"  Type: {char.get('type') or 'N/A'}\n"
+    details += f"  Created at: {char.get('created_at') or 'N/A'}\n"
+
+    images = char.get("images") or {}
+    image_info = None
+    if isinstance(images, dict):
+        image_info = images.get("large") or images.get("medium") or images.get("small")
+    details += f"  Image: {image_info or 'N/A'}\n"
 
     return details
 
@@ -2178,7 +2188,18 @@ async def get_user_person_collection(username: str, person_id: int) -> str:
     details = f"Person collection for {username} on person {person_id}:\n"
     details += f"  ID: {person.get('id')}\n"
     details += f"  Name: {person.get('name')}\n"
-    details += f"  Comment: {person.get('comment') or 'N/A'}\n"
+
+    collection_type = person.get("type") or "N/A"
+    career = person.get("career")
+    if isinstance(career, list):
+        career_str = ", ".join(str(c) for c in career)
+    else:
+        career_str = career or "N/A"
+    created_at = person.get("created_at") or "N/A"
+
+    details += f"  Type: {collection_type}\n"
+    details += f"  Career: {career_str}\n"
+    details += f"  Created at: {created_at}\n"
 
     return details
 
@@ -2229,12 +2250,12 @@ async def get_person_revisions(
 
     for rev in revisions:
         rev_id = rev.get("id")
-        action = rev.get("action")
-        created = rev.get("created")
-        user = rev.get("user", {})
-        username = user.get("username") if user else "Unknown"
+        summary = rev.get("summary") or "No summary"
+        created_at = rev.get("created_at") or "Unknown"
+        creator = rev.get("creator", {}) or {}
+        username = creator.get("username") if creator else "Unknown"
 
-        lines.append(f"  [ID: {rev_id}] {action} by {username} at {created}")
+        lines.append(f"  [ID: {rev_id}] {summary} by {username} at {created_at}")
 
     return "\n".join(lines)
 
@@ -2264,19 +2285,27 @@ async def get_person_revision(revision_id: int) -> str:
     rev = response
     details = f"Revision {revision_id} Details:\n"
     details += f"  Type: {rev.get('type')}\n"
-    details += f"  Action: {rev.get('action')}\n"
-    details += f"  Created: {rev.get('created')}\n"
 
-    user = rev.get("user", {})
-    if user:
-        details += f"  User: {user.get('username')}\n"
+    created_at = rev.get("created_at")
+    if created_at is not None:
+        details += f"  Created At: {created_at}\n"
 
-    if rev.get("summary"):
-        details += f"  Summary: {rev.get('summary')}\n"
+    creator = rev.get("creator") or {}
+    if isinstance(creator, dict) and creator:
+        username = creator.get("username") or creator.get("name") or "Unknown"
+        details += f"  Creator: {username}\n"
 
-    diff = rev.get("diff")
-    if diff:
-        details += f"  Changes: {diff}\n"
+    summary = rev.get("summary")
+    if summary:
+        details += f"  Summary: {summary}\n"
+
+    data = rev.get("data")
+    if data is not None:
+        if isinstance(data, dict):
+            keys = ", ".join(sorted(map(str, data.keys()))) if data else "no fields"
+            details += f"  Data fields: {keys}\n"
+        else:
+            details += f"  Data: {data}\n"
 
     return details
 
@@ -2324,12 +2353,12 @@ async def get_character_revisions(
 
     for rev in revisions:
         rev_id = rev.get("id")
-        action = rev.get("action")
-        created = rev.get("created")
-        user = rev.get("user", {})
-        username = user.get("username") if user else "Unknown"
+        summary = rev.get("summary") or "No summary"
+        created_at = rev.get("created_at") or "Unknown"
+        creator = rev.get("creator", {}) or {}
+        username = creator.get("username") if creator else "Unknown"
 
-        lines.append(f"  [ID: {rev_id}] {action} by {username} at {created}")
+        lines.append(f"  [ID: {rev_id}] {summary} by {username} at {created_at}")
 
     return "\n".join(lines)
 
@@ -2359,19 +2388,24 @@ async def get_character_revision(revision_id: int) -> str:
     rev = response
     details = f"Revision {revision_id} Details:\n"
     details += f"  Type: {rev.get('type')}\n"
-    details += f"  Action: {rev.get('action')}\n"
-    details += f"  Created: {rev.get('created')}\n"
 
-    user = rev.get("user", {})
-    if user:
-        details += f"  User: {user.get('username')}\n"
+    created_at = rev.get("created_at")
+    if created_at is not None:
+        details += f"  Created At: {created_at}\n"
+
+    creator = rev.get("creator", {}) or {}
+    if creator:
+        details += f"  Creator: {creator.get('username')}\n"
 
     if rev.get("summary"):
         details += f"  Summary: {rev.get('summary')}\n"
 
-    diff = rev.get("diff")
-    if diff:
-        details += f"  Changes: {diff}\n"
+    data = rev.get("data")
+    if data is not None:
+        # Pretty-print data in case it is a structured object
+        details += "  Data:\n"
+        details += json.dumps(data, ensure_ascii=False, indent=2)
+        details += "\n"
 
     return details
 
@@ -2419,12 +2453,12 @@ async def get_subject_revisions(
 
     for rev in revisions:
         rev_id = rev.get("id")
-        action = rev.get("action")
-        created = rev.get("created")
-        user = rev.get("user", {})
-        username = user.get("username") if user else "Unknown"
+        summary = rev.get("summary") or "No summary"
+        created_at = rev.get("created_at") or "Unknown"
+        creator = rev.get("creator", {}) or {}
+        username = creator.get("username") if creator else "Unknown"
 
-        lines.append(f"  [ID: {rev_id}] {action} by {username} at {created}")
+        lines.append(f"  [ID: {rev_id}] {summary} by {username} at {created_at}")
 
     return "\n".join(lines)
 
@@ -2454,19 +2488,28 @@ async def get_subject_revision(revision_id: int) -> str:
     rev = response
     details = f"Revision {revision_id} Details:\n"
     details += f"  Type: {rev.get('type')}\n"
-    details += f"  Action: {rev.get('action')}\n"
-    details += f"  Created: {rev.get('created')}\n"
 
-    user = rev.get("user", {})
-    if user:
-        details += f"  User: {user.get('username')}\n"
+    created_at = rev.get("created_at")
+    if created_at is not None:
+        details += f"  Created at: {created_at}\n"
+
+    creator = rev.get("creator", {})
+    if creator:
+        # Try common identity fields; fall back to a generic representation
+        name = creator.get("nickname") or creator.get("username") or creator.get("name")
+        if name:
+            details += f"  Creator: {name}\n"
+        else:
+            details += f"  Creator: {creator}\n"
 
     if rev.get("summary"):
         details += f"  Summary: {rev.get('summary')}\n"
 
-    diff = rev.get("diff")
-    if diff:
-        details += f"  Changes: {diff}\n"
+    data = rev.get("data")
+    if data is not None:
+        # Pretty-print the data payload for readability
+        formatted_data = json.dumps(data, ensure_ascii=False, indent=2)
+        details += f"  Data:\n{formatted_data}\n"
 
     return details
 
@@ -2514,12 +2557,12 @@ async def get_episode_revisions(
 
     for rev in revisions:
         rev_id = rev.get("id")
-        action = rev.get("action")
-        created = rev.get("created")
-        user = rev.get("user", {})
-        username = user.get("username") if user else "Unknown"
+        summary = rev.get("summary") or "No summary"
+        created_at = rev.get("created_at") or "Unknown"
+        creator = rev.get("creator", {}) or {}
+        username = creator.get("username") if creator else "Unknown"
 
-        lines.append(f"  [ID: {rev_id}] {action} by {username} at {created}")
+        lines.append(f"  [ID: {rev_id}] {summary} by {username} at {created_at}")
 
     return "\n".join(lines)
 
@@ -2549,19 +2592,30 @@ async def get_episode_revision(revision_id: int) -> str:
     rev = response
     details = f"Revision {revision_id} Details:\n"
     details += f"  Type: {rev.get('type')}\n"
-    details += f"  Action: {rev.get('action')}\n"
-    details += f"  Created: {rev.get('created')}\n"
 
-    user = rev.get("user", {})
-    if user:
-        details += f"  User: {user.get('username')}\n"
+    creator = rev.get("creator")
+    if isinstance(creator, dict):
+        username = creator.get("username") or creator.get("name") or creator.get("id")
+        if username is not None:
+            details += f"  Creator: {username}\n"
+    elif creator is not None:
+        details += f"  Creator: {creator}\n"
 
-    if rev.get("summary"):
-        details += f"  Summary: {rev.get('summary')}\n"
+    created_at = rev.get("created_at")
+    if created_at is not None:
+        details += f"  Created at: {created_at}\n"
 
-    diff = rev.get("diff")
-    if diff:
-        details += f"  Changes: {diff}\n"
+    summary = rev.get("summary")
+    if summary:
+        details += f"  Summary: {summary}\n"
+
+    data = rev.get("data")
+    if data is not None:
+        if isinstance(data, (dict, list)):
+            pretty_data = json.dumps(data, ensure_ascii=False, indent=2)
+            details += f"  Data:\n{pretty_data}\n"
+        else:
+            details += f"  Data: {data}\n"
 
     return details
 
