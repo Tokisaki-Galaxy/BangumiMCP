@@ -89,7 +89,7 @@ source .venv/bin/activate  # Linux/macOS
 # .venv\Scripts\activate
 
 # 安装依赖
-uv add "mcp[cli]" requests httpx
+uv add "mcp[cli]" httpx python-dotenv
 ```
 
 ## 使用（如Claude客户端）

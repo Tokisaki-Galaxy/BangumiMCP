@@ -1790,8 +1790,8 @@ async def get_user_subject_collection(username: str, subject_id: int) -> str:
         details += f"  Episode Status: {coll.get('ep_status')}\n"
     if coll.get('vol_status') is not None:
         details += f"  Volume Status: {coll.get('vol_status')}\n"
-    if coll.get('rating'):
-        details += f"  Rating: {coll.get('rating')}\n"
+    if coll.get('rate'):
+        details += f"  Rating: {coll.get('rate')}\n"
     if coll.get('comment'):
         details += f"  Comment: {coll.get('comment')}\n"
 
@@ -1835,7 +1835,7 @@ async def update_subject_collection(
     if vol_status is not None:
         json_body["vol_status"] = vol_status
     if rating is not None:
-        json_body["rating"] = rating
+        json_body["rate"] = rating
     if comment is not None:
         json_body["comment"] = comment
 
@@ -1897,15 +1897,25 @@ async def get_user_episode_collection(
 
     lines = [f"Episode collection for subject {subject_id}:"]
     for ep in episodes:
-        ep_id = ep.get("id")
-        ep_type = ep.get("type")
+        # Each item is a UserEpisodeCollection; episode metadata is under "episode"
+        episode_data = ep.get("episode") or {}
+
+        ep_id = episode_data.get("id")
+        ep_type = episode_data.get("type")
+        # Top-level "type" represents collection status (e.g., watched / not watched)
         status = ep.get("type")
-        name = ep.get("name") or ep.get("name_cn")
+        name = (
+            episode_data.get("name")
+            or episode_data.get("name_cn")
+            or ep.get("name")
+            or ep.get("name_cn")
+            or f"Episode {ep_id if ep_id is not None else '?'}"
+        )
 
         try:
-            type_str = EpType(ep_type).name if ep_type else "?"
+            type_str = EpType(ep_type).name if ep_type is not None else "?"
         except ValueError:
-            type_str = f"?"
+            type_str = "?"
 
         status_str = "Watched" if status == 1 else "Not Watched"
         lines.append(f"  [{type_str}] {name} - {status_str}")
