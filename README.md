@@ -2,36 +2,78 @@
 
 这是一个MCP（机器通信协议）服务，提供对 BangumiTV API 的访问。它允许您与 BangumiTV 的数据进行交互，并检索有关动漫、漫画、音乐、游戏等的信息。
 
-## 示例
-
-![output](https://github.com/user-attachments/assets/9ea4b0c1-6208-4997-a1c5-62a0c6454be8)
-
 ## 功能
 
-- 条目
-    - /calendar 每日放送
-    - /v0/search/subjects 搜索主题
-    - /v0/subjects 浏览主题
-    - /v0/subjects/{subject_id} 获取主题详情
-    - /v0/subjects/{subject_id}/persons 获取与主题相关的人员列表
-    - /v0/subjects/{subject_id}/characters 获取与主题相关的角色列表
-    - /v0/subjects/{subject_id}/subjects 获取相关主题列表
+共 **55 个工具**，完整覆盖 Bangumi API。
 
-- 章节
-    - /v0/episodes 获取剧集列表
-    - /v0/episodes/{episode_id} 获取剧集详情
+### 条目 (Subject)
+- `get_daily_broadcast` - 每日放送
+- `search_subjects` - 搜索条目
+- `browse_subjects` - 浏览条目
+- `get_subject_details` - 获取条目详情
+- `get_subject_image` - 获取条目图片 URL
+- `get_subject_persons` - 获取条目相关人员
+- `get_subject_characters` - 获取条目相关角色
+- `get_subject_relations` - 获取相关条目列表
+- `get_episodes` - 获取章节列表
+- `get_episode_details` - 获取章节详情
 
-- 角色
-    - /v0/search/characters 搜索角色
-    - /v0/characters/{character_id} 获取角色详情
-    - /v0/characters/{character_id}/subjects 获取与角色相关的主题列表
-    - /v0/characters/{character_id}/persons 获取与角色相关的人员列表
+### 角色 (Character)
+- `search_characters` - 搜索角色
+- `get_character_details` - 获取角色详情
+- `get_character_image` - 获取角色图片 URL
+- `get_character_subjects` - 获取角色相关条目
+- `get_character_persons` - 获取角色相关人员
+- `collect_character` - 收藏角色（需认证）
+- `uncollect_character` - 取消收藏角色（需认证）
 
-- 人员
-    - /v0/search/persons 搜索人员
-    - /v0/persons/{person_id} 获取人员详情
-    - /v0/persons/{person_id}/subjects 获取与人员相关的主题列表
-    - /v0/persons/{person_id}/characters 获取与人员相关的角色列表
+### 人物 (Person)
+- `search_persons` - 搜索人物
+- `get_person_details` - 获取人物详情
+- `get_person_image` - 获取人物图片 URL
+- `get_person_subjects` - 获取人物相关条目
+- `get_person_characters` - 获取人物相关角色
+- `collect_person` - 收藏人物（需认证）
+- `uncollect_person` - 取消收藏人物（需认证）
+
+### 用户 (User)
+- `get_user_info` - 获取用户信息
+- `get_user_avatar` - 获取用户头像 URL
+- `get_current_user` - 获取当前用户信息（需认证）
+
+### 收藏 (Collection)
+- `get_user_collections` - 获取用户收藏列表
+- `get_user_subject_collection` - 获取用户条目收藏状态
+- `update_subject_collection` - 更新条目收藏状态（需认证）
+- `get_user_episode_collection` - 获取章节收藏列表（需认证）
+- `update_episode_collection` - 批量更新章节收藏（需认证）
+- `get_single_episode_collection` - 获取单章节收藏状态（需认证）
+- `update_single_episode_collection` - 更新单章节收藏（需认证）
+- `get_user_character_collections` - 获取用户角色收藏列表
+- `get_user_character_collection` - 获取用户角色收藏状态
+- `get_user_person_collections` - 获取用户人物收藏列表
+- `get_user_person_collection` - 获取用户人物收藏状态
+
+### 编辑历史 (Revision)
+- `get_person_revisions` - 获取人物编辑历史
+- `get_person_revision` - 获取人物单条编辑详情
+- `get_character_revisions` - 获取角色编辑历史
+- `get_character_revision` - 获取角色单条编辑详情
+- `get_subject_revisions` - 获取条目编辑历史
+- `get_subject_revision` - 获取条目单条编辑详情
+- `get_episode_revisions` - 获取章节编辑历史
+- `get_episode_revision` - 获取章节单条编辑详情
+
+### 目录 (Index)
+- `create_index` - 创建目录（需认证）
+- `get_index` - 获取目录详情
+- `update_index` - 更新目录信息（需认证）
+- `get_index_subjects` - 获取目录内条目列表
+- `add_subject_to_index` - 添加条目到目录（需认证）
+- `update_index_subject` - 更新目录内条目信息（需认证）
+- `remove_subject_from_index` - 从目录移除条目（需认证）
+- `collect_index` - 收藏目录（需认证）
+- `uncollect_index` - 取消收藏目录（需认证）
 
 ## 安装
 
@@ -47,12 +89,12 @@ source .venv/bin/activate  # Linux/macOS
 # .venv\Scripts\activate
 
 # 安装依赖
-uv add "mcp[cli]" requests
+uv add "mcp[cli]" requests httpx
 ```
 
 ## 使用（如Claude客户端）
 
- URL: https://mcpcn.com/docs/quickstart/user/
+URL: https://mcpcn.com/docs/quickstart/user/
 
 claude_desktop_config.json
 ```json
@@ -74,6 +116,12 @@ claude_desktop_config.json
 }
 ```
 
-# 致谢
+## 环境变量
 
-此目前项目全部由 [Google Gemini](https://www.google.com/) 生成。
+| 变量 | 必填 | 说明 |
+|------|------|------|
+| `BANGUMI_TOKEN` | 否 | Bangumi Access Token，用于需要认证的操作 |
+
+## 致谢
+
+此项目基于 Bangumi API 文档构建。

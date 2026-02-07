@@ -101,6 +101,29 @@ class BloodType(IntEnum):
     O = 4
 
 
+class CollectionType(IntEnum):
+    """
+    Collection status type.
+    1=Wish, 2=Collect, 3=Doing, 4=On Hold, 5=Dropped
+    """
+
+    WISH = 1
+    COLLECT = 2
+    DOING = 3
+    ON_HOLD = 4
+    DROPPED = 5
+
+
+class EpisodeCollectionType(IntEnum):
+    """
+    Episode collection status type.
+    0=None, 1=Watched
+    """
+
+    NONE = 0
+    WATCHED = 1
+
+
 # --- Helper Function for API Requests ---
 async def make_bangumi_request(
     method: str,
@@ -119,7 +142,7 @@ async def make_bangumi_request(
 
     url = f"{BANGUMI_API_BASE}{path}"
 
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(follow_redirects=False) as client:
         try:
             print(
                 f"DEBUG: Making {method} request to {url} with params={query_params}, json={json_body}"
@@ -132,6 +155,14 @@ async def make_bangumi_request(
                 headers=request_headers,
                 timeout=30.0,
             )
+
+            # Handle 302 redirect for image endpoints
+            if response.status_code == 302:
+                location = response.headers.get("Location")
+                if location:
+                    return {"Location": location}
+                return {"error": "302 redirect without Location", "status_code": 302}
+
             response.raise_for_status()
             # Return the raw JSON response, let the calling tool handle its structure (dict or list)
             json_response = response.json()
@@ -594,6 +625,42 @@ async def get_subject_details(subject_id: int) -> str:
         details_text += f"  Cover Image: {images.get('large')}\n"
 
     return details_text
+
+
+@mcp.tool()
+async def get_subject_image(
+    subject_id: int, image_type: str = "large"
+) -> str:
+    """
+    Get the image URL for a subject.
+
+    Supported image types:
+    small, grid, large, medium, common
+
+    Args:
+        subject_id: The ID of the subject.
+        image_type: The type of image to get. Defaults to 'large'.
+
+    Returns:
+        The image URL or an error message.
+    """
+    if image_type not in ["small", "grid", "large", "medium", "common"]:
+        return f"Invalid image_type: {image_type}. Must be one of: small, grid, large, medium, common"
+
+    response = await make_bangumi_request(
+        method="GET",
+        path=f"/v0/subjects/{subject_id}/image",
+        query_params={"type": image_type},
+    )
+
+    error_msg = handle_api_error_response(response)
+    if error_msg:
+        return error_msg
+
+    if isinstance(response, dict) and "Location" in response:
+        return f"Subject Image URL: {response['Location']}"
+
+    return f"Could not retrieve image for subject ID {subject_id}"
 
 
 @mcp.tool()
@@ -1106,6 +1173,97 @@ async def get_character_persons(character_id: int) -> str:
 
 
 @mcp.tool()
+async def get_character_image(
+    character_id: int, image_type: str = "large"
+) -> str:
+    """
+    Get the image URL for a character.
+
+    Supported image types:
+    small, grid, large, medium
+
+    Args:
+        character_id: The ID of the character.
+        image_type: The type of image to get. Defaults to 'large'.
+
+    Returns:
+        The image URL or an error message.
+    """
+    if image_type not in ["small", "grid", "large", "medium"]:
+        return f"Invalid image_type: {image_type}. Must be one of: small, grid, large, medium"
+
+    response = await make_bangumi_request(
+        method="GET",
+        path=f"/v0/characters/{character_id}/image",
+        query_params={"type": image_type},
+    )
+
+    error_msg = handle_api_error_response(response)
+    if error_msg:
+        return error_msg
+
+    if isinstance(response, dict) and "Location" in response:
+        return f"Character Image URL: {response['Location']}"
+
+    return f"Could not retrieve image for character ID {character_id}"
+
+
+@mcp.tool()
+async def collect_character(character_id: int) -> str:
+    """
+    Collect (favorite) a character for the current user.
+
+    Requires authentication (BANGUMI_TOKEN).
+
+    Args:
+        character_id: The ID of the character to collect.
+
+    Returns:
+        Success message or error.
+    """
+    if not BANGUMI_TOKEN:
+        return "BANGUMI_TOKEN is required for this operation."
+
+    response = await make_bangumi_request(
+        method="POST", path=f"/v0/characters/{character_id}/collect"
+    )
+
+    error_msg = handle_api_error_response(response)
+    if error_msg:
+        return error_msg
+
+    # 204 No Content means success
+    return f"Successfully collected character ID {character_id}."
+
+
+@mcp.tool()
+async def uncollect_character(character_id: int) -> str:
+    """
+    Remove a character from the current user's collection.
+
+    Requires authentication (BANGUMI_TOKEN).
+
+    Args:
+        character_id: The ID of the character to uncollect.
+
+    Returns:
+        Success message or error.
+    """
+    if not BANGUMI_TOKEN:
+        return "BANGUMI_TOKEN is required for this operation."
+
+    response = await make_bangumi_request(
+        method="DELETE", path=f"/v0/characters/{character_id}/collect"
+    )
+
+    error_msg = handle_api_error_response(response)
+    if error_msg:
+        return error_msg
+
+    return f"Successfully uncollected character ID {character_id}."
+
+
+@mcp.tool()
 async def search_persons(
     keyword: str,
     limit: int = 30,
@@ -1339,6 +1497,1364 @@ async def get_person_characters(person_id: int) -> str:
         )
 
     return "Characters Related to This Person:\n" + "\n---\n".join(formatted_results)
+
+
+@mcp.tool()
+async def get_person_image(
+    person_id: int, image_type: str = "large"
+) -> str:
+    """
+    Get the image URL for a person.
+
+    Supported image types:
+    small, grid, large, medium
+
+    Args:
+        person_id: The ID of the person.
+        image_type: The type of image to get. Defaults to 'large'.
+
+    Returns:
+        The image URL or an error message.
+    """
+    if image_type not in ["small", "grid", "large", "medium"]:
+        return f"Invalid image_type: {image_type}. Must be one of: small, grid, large, medium"
+
+    response = await make_bangumi_request(
+        method="GET",
+        path=f"/v0/persons/{person_id}/image",
+        query_params={"type": image_type},
+    )
+
+    error_msg = handle_api_error_response(response)
+    if error_msg:
+        return error_msg
+
+    if isinstance(response, dict) and "Location" in response:
+        return f"Person Image URL: {response['Location']}"
+
+    return f"Could not retrieve image for person ID {person_id}"
+
+
+@mcp.tool()
+async def collect_person(person_id: int) -> str:
+    """
+    Collect (favorite) a person for the current user.
+
+    Requires authentication (BANGUMI_TOKEN).
+
+    Args:
+        person_id: The ID of the person to collect.
+
+    Returns:
+        Success message or error.
+    """
+    if not BANGUMI_TOKEN:
+        return "BANGUMI_TOKEN is required for this operation."
+
+    response = await make_bangumi_request(
+        method="POST", path=f"/v0/persons/{person_id}/collect"
+    )
+
+    error_msg = handle_api_error_response(response)
+    if error_msg:
+        return error_msg
+
+    return f"Successfully collected person ID {person_id}."
+
+
+@mcp.tool()
+async def uncollect_person(person_id: int) -> str:
+    """
+    Remove a person from the current user's collection.
+
+    Requires authentication (BANGUMI_TOKEN).
+
+    Args:
+        person_id: The ID of the person to uncollect.
+
+    Returns:
+        Success message or error.
+    """
+    if not BANGUMI_TOKEN:
+        return "BANGUMI_TOKEN is required for this operation."
+
+    response = await make_bangumi_request(
+        method="DELETE", path=f"/v0/persons/{person_id}/collect"
+    )
+
+    error_msg = handle_api_error_response(response)
+    if error_msg:
+        return error_msg
+
+    return f"Successfully uncollected person ID {person_id}."
+
+
+# --- User & Collection Functions ---
+
+
+@mcp.tool()
+async def get_user_info(username: str) -> str:
+    """
+    Get user information by username.
+
+    Args:
+        username: The username to look up.
+
+    Returns:
+        Formatted user info or error.
+    """
+    response = await make_bangumi_request(
+        method="GET", path=f"/v0/users/{username}"
+    )
+
+    error_msg = handle_api_error_response(response)
+    if error_msg:
+        return error_msg
+
+    if not isinstance(response, dict):
+        return f"Unexpected API response format: {response}"
+
+    user = response
+    details = f"User: {username}\n"
+    details += f"  ID: {user.get('id')}\n"
+    details += f"  Nickname: {user.get('nickname')}\n"
+    if user.get('sign'):
+        details += f"  Sign: {user.get('sign')}\n"
+
+    return details
+
+
+@mcp.tool()
+async def get_user_avatar(username: str, avatar_type: str = "large") -> str:
+    """
+    Get the avatar URL for a user.
+
+    Supported avatar types:
+    small, large, medium
+
+    Args:
+        username: The username.
+        avatar_type: The type of avatar. Defaults to 'large'.
+
+    Returns:
+        The avatar URL or error.
+    """
+    if avatar_type not in ["small", "large", "medium"]:
+        return f"Invalid avatar_type: {avatar_type}. Must be one of: small, large, medium"
+
+    response = await make_bangumi_request(
+        method="GET",
+        path=f"/v0/users/{username}/avatar",
+        query_params={"type": avatar_type},
+    )
+
+    error_msg = handle_api_error_response(response)
+    if error_msg:
+        return error_msg
+
+    if isinstance(response, dict) and "Location" in response:
+        return f"User Avatar URL: {response['Location']}"
+
+    return f"Could not retrieve avatar for user {username}"
+
+
+@mcp.tool()
+async def get_current_user() -> str:
+    """
+    Get the current user's information.
+
+    Requires authentication (BANGUMI_TOKEN).
+
+    Returns:
+        Current user info or error.
+    """
+    if not BANGUMI_TOKEN:
+        return "BANGUMI_TOKEN is required for this operation."
+
+    response = await make_bangumi_request(method="GET", path="/v0/me")
+
+    error_msg = handle_api_error_response(response)
+    if error_msg:
+        return error_msg
+
+    if not isinstance(response, dict):
+        return f"Unexpected API response format: {response}"
+
+    user = response
+    details = f"Current User:\n"
+    details += f"  ID: {user.get('id')}\n"
+    details += f"  Username: {user.get('username')}\n"
+    details += f"  Nickname: {user.get('nickname')}\n"
+    if user.get('email'):
+        details += f"  Email: {user.get('email')}\n"
+    if user.get('reg_time'):
+        details += f"  Registered: {user.get('reg_time')}\n"
+
+    return details
+
+
+@mcp.tool()
+async def get_user_collections(
+    username: str,
+    subject_type: Optional[SubjectType] = None,
+    collection_type: Optional[int] = None,
+    limit: int = 30,
+    offset: int = 0,
+) -> str:
+    """
+    Get the collection list for a user.
+
+    Collection types:
+    1: Wish, 2: Collect, 3: Doing, 4: On Hold, 5: Dropped
+
+    Args:
+        username: The username.
+        subject_type: Optional filter by subject type.
+        collection_type: Optional filter by collection status (1-5).
+        limit: Pagination limit. Defaults to 30.
+        offset: Pagination offset. Defaults to 0.
+
+    Returns:
+        Formatted collection list or error.
+    """
+    query_params: Dict[str, Any] = {"limit": min(limit, 50), "offset": offset}
+    if subject_type is not None:
+        query_params["subject_type"] = int(subject_type)
+    if collection_type is not None:
+        query_params["type"] = collection_type
+
+    response = await make_bangumi_request(
+        method="GET",
+        path=f"/v0/users/{username}/collections",
+        query_params=query_params,
+    )
+
+    error_msg = handle_api_error_response(response)
+    if error_msg:
+        return error_msg
+
+    if not isinstance(response, dict) or "data" not in response:
+        return f"Unexpected API response format: {response}"
+
+    collections = response.get("data", [])
+    if not collections:
+        return f"No collections found for user {username}."
+
+    status_map = {1: "Wish", 2: "Collected", 3: "Doing", 4: "On Hold", 5: "Dropped"}
+    lines = [f"Collections for user {username}:"]
+    lines.append(f"Total: {response.get('total', 0)}\n")
+
+    for item in collections:
+        subj = item.get("subject", {})
+        name = subj.get("name_cn") or subj.get("name")
+        subj_type = subj.get("type")
+        status = status_map.get(item.get("type"), "Unknown")
+
+        try:
+            type_str = SubjectType(subj_type).name if subj_type else "?"
+        except ValueError:
+            type_str = f"?"
+
+        lines.append(f"  [{type_str}] {name} - {status}")
+
+    return "\n".join(lines)
+
+
+@mcp.tool()
+async def get_user_subject_collection(username: str, subject_id: int) -> str:
+    """
+    Get a user's collection status for a specific subject.
+
+    Args:
+        username: The username.
+        subject_id: The subject ID.
+
+    Returns:
+        Collection details or error.
+    """
+    response = await make_bangumi_request(
+        method="GET", path=f"/v0/users/{username}/collections/{subject_id}"
+    )
+
+    error_msg = handle_api_error_response(response)
+    if error_msg:
+        return error_msg
+
+    if not isinstance(response, dict):
+        return f"Unexpected API response format: {response}"
+
+    coll = response
+    details = f"Collection for {username} on subject {subject_id}:\n"
+    details += f"  Type: {coll.get('type')}\n"
+    if coll.get('ep_status') is not None:
+        details += f"  Episode Status: {coll.get('ep_status')}\n"
+    if coll.get('vol_status') is not None:
+        details += f"  Volume Status: {coll.get('vol_status')}\n"
+    if coll.get('rating'):
+        details += f"  Rating: {coll.get('rating')}\n"
+    if coll.get('comment'):
+        details += f"  Comment: {coll.get('comment')}\n"
+
+    return details
+
+
+@mcp.tool()
+async def update_subject_collection(
+    subject_id: int,
+    collection_type: Optional[int] = None,
+    ep_status: Optional[int] = None,
+    vol_status: Optional[int] = None,
+    rating: Optional[int] = None,
+    comment: Optional[str] = None,
+) -> str:
+    """
+    Update the collection status for a subject.
+
+    Collection types:
+    1: Wish, 2: Collect, 3: Doing, 4: On Hold, 5: Dropped
+
+    Args:
+        subject_id: The subject ID.
+        collection_type: Collection status (1-5).
+        ep_status: Episode status (0-n).
+        vol_status: Volume status (0-n).
+        rating: Rating (0-10).
+        comment: Personal comment.
+
+    Returns:
+        Success message or error.
+    """
+    if not BANGUMI_TOKEN:
+        return "BANGUMI_TOKEN is required for this operation."
+
+    json_body: Dict[str, Any] = {}
+    if collection_type is not None:
+        json_body["type"] = collection_type
+    if ep_status is not None:
+        json_body["ep_status"] = ep_status
+    if vol_status is not None:
+        json_body["vol_status"] = vol_status
+    if rating is not None:
+        json_body["rating"] = rating
+    if comment is not None:
+        json_body["comment"] = comment
+
+    response = await make_bangumi_request(
+        method="POST",
+        path=f"/v0/users/-/collections/{subject_id}",
+        json_body=json_body,
+    )
+
+    error_msg = handle_api_error_response(response)
+    if error_msg:
+        return error_msg
+
+    return f"Successfully updated collection for subject {subject_id}."
+
+
+@mcp.tool()
+async def get_user_episode_collection(
+    subject_id: int,
+    episode_type: Optional[EpType] = None,
+    limit: int = 100,
+    offset: int = 0,
+) -> str:
+    """
+    Get the episode collection status for a subject.
+
+    Args:
+        subject_id: The subject ID.
+        episode_type: Optional filter by episode type.
+        limit: Pagination limit. Defaults to 100.
+        offset: Pagination offset. Defaults to 0.
+
+    Returns:
+        Episode collection details or error.
+    """
+    if not BANGUMI_TOKEN:
+        return "BANGUMI_TOKEN is required for this operation."
+
+    query_params: Dict[str, Any] = {"limit": min(limit, 1000), "offset": offset}
+    if episode_type is not None:
+        query_params["episode_type"] = int(episode_type)
+
+    response = await make_bangumi_request(
+        method="GET",
+        path=f"/v0/users/-/collections/{subject_id}/episodes",
+        query_params=query_params,
+    )
+
+    error_msg = handle_api_error_response(response)
+    if error_msg:
+        return error_msg
+
+    if not isinstance(response, dict) or "data" not in response:
+        return f"Unexpected API response format: {response}"
+
+    episodes = response.get("data", [])
+    if not episodes:
+        return f"No episode collection found for subject {subject_id}."
+
+    lines = [f"Episode collection for subject {subject_id}:"]
+    for ep in episodes:
+        ep_id = ep.get("id")
+        ep_type = ep.get("type")
+        status = ep.get("type")
+        name = ep.get("name") or ep.get("name_cn")
+
+        try:
+            type_str = EpType(ep_type).name if ep_type else "?"
+        except ValueError:
+            type_str = f"?"
+
+        status_str = "Watched" if status == 1 else "Not Watched"
+        lines.append(f"  [{type_str}] {name} - {status_str}")
+
+    return "\n".join(lines)
+
+
+@mcp.tool()
+async def update_episode_collection(
+    subject_id: int,
+    episode_ids: List[int],
+    episode_type: int = 1,
+) -> str:
+    """
+    Update the collection status for episodes.
+
+    Episode collection types:
+    0: None, 1: Watched
+
+    Args:
+        subject_id: The subject ID.
+        episode_ids: List of episode IDs to update.
+        episode_type: Collection status (0 or 1). Defaults to 1 (Watched).
+
+    Returns:
+        Success message or error.
+    """
+    if not BANGUMI_TOKEN:
+        return "BANGUMI_TOKEN is required for this operation."
+
+    json_body = {
+        "episode_id": episode_ids,
+        "type": episode_type,
+    }
+
+    response = await make_bangumi_request(
+        method="PATCH",
+        path=f"/v0/users/-/collections/{subject_id}/episodes",
+        json_body=json_body,
+    )
+
+    error_msg = handle_api_error_response(response)
+    if error_msg:
+        return error_msg
+
+    return f"Successfully updated collection for {len(episode_ids)} episodes."
+
+
+@mcp.tool()
+async def get_single_episode_collection(episode_id: int) -> str:
+    """
+    Get the collection status for a single episode.
+
+    Args:
+        episode_id: The episode ID.
+
+    Returns:
+        Episode collection status or error.
+    """
+    if not BANGUMI_TOKEN:
+        return "BANGUMI_TOKEN is required for this operation."
+
+    response = await make_bangumi_request(
+        method="GET", path=f"/v0/users/-/collections/-/episodes/{episode_id}"
+    )
+
+    error_msg = handle_api_error_response(response)
+    if error_msg:
+        return error_msg
+
+    if not isinstance(response, dict):
+        return f"Unexpected API response format: {response}"
+
+    ep = response
+    status = "Watched" if ep.get("type") == 1 else "Not Watched"
+    details = f"Episode {episode_id} collection:\n"
+    details += f"  Status: {status}\n"
+
+    return details
+
+
+@mcp.tool()
+async def update_single_episode_collection(
+    episode_id: int, episode_type: int = 1
+) -> str:
+    """
+    Update the collection status for a single episode.
+
+    Args:
+        episode_id: The episode ID.
+        episode_type: Collection status (0 or 1). Defaults to 1 (Watched).
+
+    Returns:
+        Success message or error.
+    """
+    if not BANGUMI_TOKEN:
+        return "BANGUMI_TOKEN is required for this operation."
+
+    json_body = {"type": episode_type}
+
+    response = await make_bangumi_request(
+        method="PUT",
+        path=f"/v0/users/-/collections/-/episodes/{episode_id}",
+        json_body=json_body,
+    )
+
+    error_msg = handle_api_error_response(response)
+    if error_msg:
+        return error_msg
+
+    return f"Successfully updated collection for episode {episode_id}."
+
+
+@mcp.tool()
+async def get_user_character_collections(username: str) -> str:
+    """
+    Get a user's character collection list.
+
+    Args:
+        username: The username.
+
+    Returns:
+        Character collection list or error.
+    """
+    response = await make_bangumi_request(
+        method="GET", path=f"/v0/users/{username}/collections/-/characters"
+    )
+
+    error_msg = handle_api_error_response(response)
+    if error_msg:
+        return error_msg
+
+    if not isinstance(response, dict) or "data" not in response:
+        return f"Unexpected API response format: {response}"
+
+    characters = response.get("data", [])
+    if not characters:
+        return f"No character collections found for user {username}."
+
+    lines = [f"Character collections for {username}:"]
+    for char in characters:
+        char_id = char.get("id")
+        name = char.get("name")
+        lines.append(f"  [ID: {char_id}] {name}")
+
+    return "\n".join(lines)
+
+
+@mcp.tool()
+async def get_user_character_collection(
+    username: str, character_id: int
+) -> str:
+    """
+    Get a user's collection status for a specific character.
+
+    Args:
+        username: The username.
+        character_id: The character ID.
+
+    Returns:
+        Character collection details or error.
+    """
+    response = await make_bangumi_request(
+        method="GET",
+        path=f"/v0/users/{username}/collections/-/characters/{character_id}",
+    )
+
+    error_msg = handle_api_error_response(response)
+    if error_msg:
+        return error_msg
+
+    if not isinstance(response, dict):
+        return f"Unexpected API response format: {response}"
+
+    char = response
+    details = f"Character collection for {username} on character {character_id}:\n"
+    details += f"  ID: {char.get('id')}\n"
+    details += f"  Name: {char.get('name')}\n"
+    details += f"  Comment: {char.get('comment') or 'N/A'}\n"
+
+    return details
+
+
+@mcp.tool()
+async def get_user_person_collections(username: str) -> str:
+    """
+    Get a user's person collection list.
+
+    Args:
+        username: The username.
+
+    Returns:
+        Person collection list or error.
+    """
+    response = await make_bangumi_request(
+        method="GET", path=f"/v0/users/{username}/collections/-/persons"
+    )
+
+    error_msg = handle_api_error_response(response)
+    if error_msg:
+        return error_msg
+
+    if not isinstance(response, dict) or "data" not in response:
+        return f"Unexpected API response format: {response}"
+
+    persons = response.get("data", [])
+    if not persons:
+        return f"No person collections found for user {username}."
+
+    lines = [f"Person collections for {username}:"]
+    for person in persons:
+        person_id = person.get("id")
+        name = person.get("name")
+        lines.append(f"  [ID: {person_id}] {name}")
+
+    return "\n".join(lines)
+
+
+@mcp.tool()
+async def get_user_person_collection(username: str, person_id: int) -> str:
+    """
+    Get a user's collection status for a specific person.
+
+    Args:
+        username: The username.
+        person_id: The person ID.
+
+    Returns:
+        Person collection details or error.
+    """
+    response = await make_bangumi_request(
+        method="GET",
+        path=f"/v0/users/{username}/collections/-/persons/{person_id}",
+    )
+
+    error_msg = handle_api_error_response(response)
+    if error_msg:
+        return error_msg
+
+    if not isinstance(response, dict):
+        return f"Unexpected API response format: {response}"
+
+    person = response
+    details = f"Person collection for {username} on person {person_id}:\n"
+    details += f"  ID: {person.get('id')}\n"
+    details += f"  Name: {person.get('name')}\n"
+    details += f"  Comment: {person.get('comment') or 'N/A'}\n"
+
+    return details
+
+
+# --- Revision History Functions ---
+
+
+@mcp.tool()
+async def get_person_revisions(
+    person_id: int,
+    limit: int = 30,
+    offset: int = 0,
+) -> str:
+    """
+    Get revision history for a person.
+
+    Args:
+        person_id: The person ID.
+        limit: Pagination limit. Defaults to 30.
+        offset: Pagination offset. Defaults to 0.
+
+    Returns:
+        Revision history or error.
+    """
+    query_params: Dict[str, Any] = {
+        "person_id": person_id,
+        "limit": min(limit, 50),
+        "offset": offset,
+    }
+
+    response = await make_bangumi_request(
+        method="GET", path="/v0/revisions/persons", query_params=query_params
+    )
+
+    error_msg = handle_api_error_response(response)
+    if error_msg:
+        return error_msg
+
+    if not isinstance(response, dict) or "data" not in response:
+        return f"Unexpected API response format: {response}"
+
+    revisions = response.get("data", [])
+    if not revisions:
+        return f"No revisions found for person ID {person_id}."
+
+    lines = [f"Revisions for person {person_id}:"]
+    lines.append(f"Total: {response.get('total', 0)}\n")
+
+    for rev in revisions:
+        rev_id = rev.get("id")
+        action = rev.get("action")
+        created = rev.get("created")
+        user = rev.get("user", {})
+        username = user.get("username") if user else "Unknown"
+
+        lines.append(f"  [ID: {rev_id}] {action} by {username} at {created}")
+
+    return "\n".join(lines)
+
+
+@mcp.tool()
+async def get_person_revision(revision_id: int) -> str:
+    """
+    Get details of a specific person revision.
+
+    Args:
+        revision_id: The revision ID.
+
+    Returns:
+        Revision details or error.
+    """
+    response = await make_bangumi_request(
+        method="GET", path=f"/v0/revisions/persons/{revision_id}"
+    )
+
+    error_msg = handle_api_error_response(response)
+    if error_msg:
+        return error_msg
+
+    if not isinstance(response, dict):
+        return f"Unexpected API response format: {response}"
+
+    rev = response
+    details = f"Revision {revision_id} Details:\n"
+    details += f"  Type: {rev.get('type')}\n"
+    details += f"  Action: {rev.get('action')}\n"
+    details += f"  Created: {rev.get('created')}\n"
+
+    user = rev.get("user", {})
+    if user:
+        details += f"  User: {user.get('username')}\n"
+
+    if rev.get("summary"):
+        details += f"  Summary: {rev.get('summary')}\n"
+
+    diff = rev.get("diff")
+    if diff:
+        details += f"  Changes: {diff}\n"
+
+    return details
+
+
+@mcp.tool()
+async def get_character_revisions(
+    character_id: int,
+    limit: int = 30,
+    offset: int = 0,
+) -> str:
+    """
+    Get revision history for a character.
+
+    Args:
+        character_id: The character ID.
+        limit: Pagination limit. Defaults to 30.
+        offset: Pagination offset. Defaults to 0.
+
+    Returns:
+        Revision history or error.
+    """
+    query_params: Dict[str, Any] = {
+        "character_id": character_id,
+        "limit": min(limit, 50),
+        "offset": offset,
+    }
+
+    response = await make_bangumi_request(
+        method="GET", path="/v0/revisions/characters", query_params=query_params
+    )
+
+    error_msg = handle_api_error_response(response)
+    if error_msg:
+        return error_msg
+
+    if not isinstance(response, dict) or "data" not in response:
+        return f"Unexpected API response format: {response}"
+
+    revisions = response.get("data", [])
+    if not revisions:
+        return f"No revisions found for character ID {character_id}."
+
+    lines = [f"Revisions for character {character_id}:"]
+    lines.append(f"Total: {response.get('total', 0)}\n")
+
+    for rev in revisions:
+        rev_id = rev.get("id")
+        action = rev.get("action")
+        created = rev.get("created")
+        user = rev.get("user", {})
+        username = user.get("username") if user else "Unknown"
+
+        lines.append(f"  [ID: {rev_id}] {action} by {username} at {created}")
+
+    return "\n".join(lines)
+
+
+@mcp.tool()
+async def get_character_revision(revision_id: int) -> str:
+    """
+    Get details of a specific character revision.
+
+    Args:
+        revision_id: The revision ID.
+
+    Returns:
+        Revision details or error.
+    """
+    response = await make_bangumi_request(
+        method="GET", path=f"/v0/revisions/characters/{revision_id}"
+    )
+
+    error_msg = handle_api_error_response(response)
+    if error_msg:
+        return error_msg
+
+    if not isinstance(response, dict):
+        return f"Unexpected API response format: {response}"
+
+    rev = response
+    details = f"Revision {revision_id} Details:\n"
+    details += f"  Type: {rev.get('type')}\n"
+    details += f"  Action: {rev.get('action')}\n"
+    details += f"  Created: {rev.get('created')}\n"
+
+    user = rev.get("user", {})
+    if user:
+        details += f"  User: {user.get('username')}\n"
+
+    if rev.get("summary"):
+        details += f"  Summary: {rev.get('summary')}\n"
+
+    diff = rev.get("diff")
+    if diff:
+        details += f"  Changes: {diff}\n"
+
+    return details
+
+
+@mcp.tool()
+async def get_subject_revisions(
+    subject_id: int,
+    limit: int = 30,
+    offset: int = 0,
+) -> str:
+    """
+    Get revision history for a subject.
+
+    Args:
+        subject_id: The subject ID.
+        limit: Pagination limit. Defaults to 30.
+        offset: Pagination offset. Defaults to 0.
+
+    Returns:
+        Revision history or error.
+    """
+    query_params: Dict[str, Any] = {
+        "subject_id": subject_id,
+        "limit": min(limit, 50),
+        "offset": offset,
+    }
+
+    response = await make_bangumi_request(
+        method="GET", path="/v0/revisions/subjects", query_params=query_params
+    )
+
+    error_msg = handle_api_error_response(response)
+    if error_msg:
+        return error_msg
+
+    if not isinstance(response, dict) or "data" not in response:
+        return f"Unexpected API response format: {response}"
+
+    revisions = response.get("data", [])
+    if not revisions:
+        return f"No revisions found for subject ID {subject_id}."
+
+    lines = [f"Revisions for subject {subject_id}:"]
+    lines.append(f"Total: {response.get('total', 0)}\n")
+
+    for rev in revisions:
+        rev_id = rev.get("id")
+        action = rev.get("action")
+        created = rev.get("created")
+        user = rev.get("user", {})
+        username = user.get("username") if user else "Unknown"
+
+        lines.append(f"  [ID: {rev_id}] {action} by {username} at {created}")
+
+    return "\n".join(lines)
+
+
+@mcp.tool()
+async def get_subject_revision(revision_id: int) -> str:
+    """
+    Get details of a specific subject revision.
+
+    Args:
+        revision_id: The revision ID.
+
+    Returns:
+        Revision details or error.
+    """
+    response = await make_bangumi_request(
+        method="GET", path=f"/v0/revisions/subjects/{revision_id}"
+    )
+
+    error_msg = handle_api_error_response(response)
+    if error_msg:
+        return error_msg
+
+    if not isinstance(response, dict):
+        return f"Unexpected API response format: {response}"
+
+    rev = response
+    details = f"Revision {revision_id} Details:\n"
+    details += f"  Type: {rev.get('type')}\n"
+    details += f"  Action: {rev.get('action')}\n"
+    details += f"  Created: {rev.get('created')}\n"
+
+    user = rev.get("user", {})
+    if user:
+        details += f"  User: {user.get('username')}\n"
+
+    if rev.get("summary"):
+        details += f"  Summary: {rev.get('summary')}\n"
+
+    diff = rev.get("diff")
+    if diff:
+        details += f"  Changes: {diff}\n"
+
+    return details
+
+
+@mcp.tool()
+async def get_episode_revisions(
+    episode_id: int,
+    limit: int = 30,
+    offset: int = 0,
+) -> str:
+    """
+    Get revision history for an episode.
+
+    Args:
+        episode_id: The episode ID.
+        limit: Pagination limit. Defaults to 30.
+        offset: Pagination offset. Defaults to 0.
+
+    Returns:
+        Revision history or error.
+    """
+    query_params: Dict[str, Any] = {
+        "episode_id": episode_id,
+        "limit": min(limit, 50),
+        "offset": offset,
+    }
+
+    response = await make_bangumi_request(
+        method="GET", path="/v0/revisions/episodes", query_params=query_params
+    )
+
+    error_msg = handle_api_error_response(response)
+    if error_msg:
+        return error_msg
+
+    if not isinstance(response, dict) or "data" not in response:
+        return f"Unexpected API response format: {response}"
+
+    revisions = response.get("data", [])
+    if not revisions:
+        return f"No revisions found for episode ID {episode_id}."
+
+    lines = [f"Revisions for episode {episode_id}:"]
+    lines.append(f"Total: {response.get('total', 0)}\n")
+
+    for rev in revisions:
+        rev_id = rev.get("id")
+        action = rev.get("action")
+        created = rev.get("created")
+        user = rev.get("user", {})
+        username = user.get("username") if user else "Unknown"
+
+        lines.append(f"  [ID: {rev_id}] {action} by {username} at {created}")
+
+    return "\n".join(lines)
+
+
+@mcp.tool()
+async def get_episode_revision(revision_id: int) -> str:
+    """
+    Get details of a specific episode revision.
+
+    Args:
+        revision_id: The revision ID.
+
+    Returns:
+        Revision details or error.
+    """
+    response = await make_bangumi_request(
+        method="GET", path=f"/v0/revisions/episodes/{revision_id}"
+    )
+
+    error_msg = handle_api_error_response(response)
+    if error_msg:
+        return error_msg
+
+    if not isinstance(response, dict):
+        return f"Unexpected API response format: {response}"
+
+    rev = response
+    details = f"Revision {revision_id} Details:\n"
+    details += f"  Type: {rev.get('type')}\n"
+    details += f"  Action: {rev.get('action')}\n"
+    details += f"  Created: {rev.get('created')}\n"
+
+    user = rev.get("user", {})
+    if user:
+        details += f"  User: {user.get('username')}\n"
+
+    if rev.get("summary"):
+        details += f"  Summary: {rev.get('summary')}\n"
+
+    diff = rev.get("diff")
+    if diff:
+        details += f"  Changes: {diff}\n"
+
+    return details
+
+
+# --- Index (Directory) Functions ---
+
+
+@mcp.tool()
+async def create_index(title: str, description: str) -> str:
+    """
+    Create a new index (directory).
+
+    Requires authentication (BANGUMI_TOKEN).
+
+    Args:
+        title: The title of the index.
+        description: The description of the index.
+
+    Returns:
+        Index ID or error.
+    """
+    if not BANGUMI_TOKEN:
+        return "BANGUMI_TOKEN is required for this operation."
+
+    json_body = {
+        "title": title,
+        "description": description,
+    }
+
+    response = await make_bangumi_request(
+        method="POST", path="/v0/indices", json_body=json_body
+    )
+
+    error_msg = handle_api_error_response(response)
+    if error_msg:
+        return error_msg
+
+    if not isinstance(response, dict):
+        return f"Unexpected API response format: {response}"
+
+    index_id = response.get("id")
+    return f"Successfully created index. ID: {index_id}"
+
+
+@mcp.tool()
+async def get_index(index_id: int) -> str:
+    """
+    Get index (directory) details.
+
+    Args:
+        index_id: The index ID.
+
+    Returns:
+        Index details or error.
+    """
+    response = await make_bangumi_request(
+        method="GET", path=f"/v0/indices/{index_id}"
+    )
+
+    error_msg = handle_api_error_response(response)
+    if error_msg:
+        return error_msg
+
+    if not isinstance(response, dict):
+        return f"Unexpected API response format: {response}"
+
+    idx = response
+    details = f"Index {index_id}:\n"
+    details += f"  Title: {idx.get('title')}\n"
+    details += f"  Description: {idx.get('description')}\n"
+    details += f"  Creator: {idx.get('creator', {}).get('username') if isinstance(idx.get('creator'), dict) else idx.get('creator')}\n"
+    details += f"  Created: {idx.get('created')}\n"
+    details += f"  Subject Count: {idx.get('subject_count', 0)}\n"
+
+    return details
+
+
+@mcp.tool()
+async def update_index(
+    index_id: int, title: str, description: str
+) -> str:
+    """
+    Update index (directory) information.
+
+    Requires authentication (BANGUMI_TOKEN).
+
+    Args:
+        index_id: The index ID.
+        title: New title.
+        description: New description.
+
+    Returns:
+        Success message or error.
+    """
+    if not BANGUMI_TOKEN:
+        return "BANGUMI_TOKEN is required for this operation."
+
+    json_body = {
+        "title": title,
+        "description": description,
+    }
+
+    response = await make_bangumi_request(
+        method="PUT", path=f"/v0/indices/{index_id}", json_body=json_body
+    )
+
+    error_msg = handle_api_error_response(response)
+    if error_msg:
+        return error_msg
+
+    return f"Successfully updated index {index_id}."
+
+
+@mcp.tool()
+async def get_index_subjects(
+    index_id: int,
+    subject_type: Optional[SubjectType] = None,
+    limit: int = 30,
+    offset: int = 0,
+) -> str:
+    """
+    Get subjects in an index.
+
+    Args:
+        index_id: The index ID.
+        subject_type: Optional filter by subject type.
+        limit: Pagination limit. Defaults to 30.
+        offset: Pagination offset. Defaults to 0.
+
+    Returns:
+        Index subjects or error.
+    """
+    query_params: Dict[str, Any] = {
+        "limit": min(limit, 50),
+        "offset": offset,
+    }
+    if subject_type is not None:
+        query_params["type"] = int(subject_type)
+
+    response = await make_bangumi_request(
+        method="GET", path=f"/v0/indices/{index_id}/subjects", query_params=query_params
+    )
+
+    error_msg = handle_api_error_response(response)
+    if error_msg:
+        return error_msg
+
+    if not isinstance(response, dict) or "data" not in response:
+        return f"Unexpected API response format: {response}"
+
+    subjects = response.get("data", [])
+    if not subjects:
+        return f"No subjects found in index {index_id}."
+
+    lines = [f"Subjects in index {index_id}:"]
+    lines.append(f"Total: {response.get('total', 0)}\n")
+
+    for subj in subjects:
+        subj_id = subj.get("id")
+        name = subj.get("title") or subj.get("name")
+        lines.append(f"  [ID: {subj_id}] {name}")
+
+    return "\n".join(lines)
+
+
+@mcp.tool()
+async def add_subject_to_index(
+    index_id: int, subject_id: int, comment: Optional[str] = None
+) -> str:
+    """
+    Add a subject to an index.
+
+    Requires authentication (BANGUMI_TOKEN).
+
+    Args:
+        index_id: The index ID.
+        subject_id: The subject ID to add.
+        comment: Optional comment.
+
+    Returns:
+        Success message or error.
+    """
+    if not BANGUMI_TOKEN:
+        return "BANGUMI_TOKEN is required for this operation."
+
+    json_body: Dict[str, Any] = {"subject_id": subject_id}
+    if comment:
+        json_body["comment"] = comment
+
+    response = await make_bangumi_request(
+        method="POST", path=f"/v0/indices/{index_id}/subjects", json_body=json_body
+    )
+
+    error_msg = handle_api_error_response(response)
+    if error_msg:
+        return error_msg
+
+    return f"Successfully added subject {subject_id} to index {index_id}."
+
+
+@mcp.tool()
+async def update_index_subject(
+    index_id: int, subject_id: int, comment: Optional[str] = None
+) -> str:
+    """
+    Update subject information in an index.
+
+    Requires authentication (BANGUMI_TOKEN).
+
+    Args:
+        index_id: The index ID.
+        subject_id: The subject ID to update.
+        comment: New comment.
+
+    Returns:
+        Success message or error.
+    """
+    if not BANGUMI_TOKEN:
+        return "BANGUMI_TOKEN is required for this operation."
+
+    json_body: Dict[str, Any] = {}
+    if comment:
+        json_body["comment"] = comment
+
+    response = await make_bangumi_request(
+        method="PUT",
+        path=f"/v0/indices/{index_id}/subjects/{subject_id}",
+        json_body=json_body,
+    )
+
+    error_msg = handle_api_error_response(response)
+    if error_msg:
+        return error_msg
+
+    return f"Successfully updated subject {subject_id} in index {index_id}."
+
+
+@mcp.tool()
+async def remove_subject_from_index(
+    index_id: int, subject_id: int
+) -> str:
+    """
+    Remove a subject from an index.
+
+    Requires authentication (BANGUMI_TOKEN).
+
+    Args:
+        index_id: The index ID.
+        subject_id: The subject ID to remove.
+
+    Returns:
+        Success message or error.
+    """
+    if not BANGUMI_TOKEN:
+        return "BANGUMI_TOKEN is required for this operation."
+
+    response = await make_bangumi_request(
+        method="DELETE", path=f"/v0/indices/{index_id}/subjects/{subject_id}"
+    )
+
+    error_msg = handle_api_error_response(response)
+    if error_msg:
+        return error_msg
+
+    return f"Successfully removed subject {subject_id} from index {index_id}."
+
+
+@mcp.tool()
+async def collect_index(index_id: int) -> str:
+    """
+    Collect (favorite) an index for the current user.
+
+    Requires authentication (BANGUMI_TOKEN).
+
+    Args:
+        index_id: The index ID.
+
+    Returns:
+        Success message or error.
+    """
+    if not BANGUMI_TOKEN:
+        return "BANGUMI_TOKEN is required for this operation."
+
+    response = await make_bangumi_request(
+        method="POST", path=f"/v0/indices/{index_id}/collect"
+    )
+
+    error_msg = handle_api_error_response(response)
+    if error_msg:
+        return error_msg
+
+    return f"Successfully collected index {index_id}."
+
+
+@mcp.tool()
+async def uncollect_index(index_id: int) -> str:
+    """
+    Remove an index from the current user's collection.
+
+    Requires authentication (BANGUMI_TOKEN).
+
+    Args:
+        index_id: The index ID.
+
+    Returns:
+        Success message or error.
+    """
+    if not BANGUMI_TOKEN:
+        return "BANGUMI_TOKEN is required for this operation."
+
+    response = await make_bangumi_request(
+        method="DELETE", path=f"/v0/indices/{index_id}/collect"
+    )
+
+    error_msg = handle_api_error_response(response)
+    if error_msg:
+        return error_msg
+
+    return f"Successfully uncollected index {index_id}."
 
 
 # --- Prompts ---
