@@ -167,7 +167,12 @@ async def make_bangumi_request(
                     "status_code": response.status_code,
                 }
 
-            # For other 3xx codes, let httpx handle them (or fail naturally)
+            # Handle other 3xx codes that shouldn't have a Location header
+            if 300 <= response.status_code < 400:
+                return {
+                    "error": f"Unexpected redirect status: {response.status_code}",
+                    "status_code": response.status_code,
+                }
 
             response.raise_for_status()
 
@@ -2685,10 +2690,10 @@ async def get_index(index_id: int) -> str:
     idx = response
     details = f"Index {index_id}:\n"
     details += f"  Title: {idx.get('title')}\n"
-    details += f"  Description: {idx.get('description')}\n"
+    details += f"  Description: {idx.get('desc') or idx.get('description')}\n"
     details += f"  Creator: {idx.get('creator', {}).get('username') if isinstance(idx.get('creator'), dict) else idx.get('creator')}\n"
-    details += f"  Created: {idx.get('created')}\n"
-    details += f"  Subject Count: {idx.get('subject_count', 0)}\n"
+    details += f"  Created: {idx.get('created_at') or idx.get('created')}\n"
+    details += f"  Subject Count: {idx.get('total', idx.get('subject_count', 0))}\n"
 
     return details
 
