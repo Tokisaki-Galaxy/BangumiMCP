@@ -156,14 +156,24 @@ async def make_bangumi_request(
                 timeout=30.0,
             )
 
-            # Handle 302 redirect for image endpoints
-            if response.status_code == 302:
+            # Handle redirect responses (e.g., image endpoints) without attempting JSON parsing
+            if 300 <= response.status_code < 400:
                 location = response.headers.get("Location")
                 if location:
-                    return {"Location": location}
-                return {"error": "302 redirect without Location", "status_code": 302}
+                    return {"Location": location, "status_code": response.status_code}
+                return {
+                    "error": f"{response.status_code} redirect without Location",
+                    "status_code": response.status_code,
+                }
 
             response.raise_for_status()
+
+            # Some successful responses (e.g., 204 No Content) may have an empty body; avoid JSON parsing then
+            if response.status_code == 204 or not response.content:
+                print("DEBUG: Received empty response body (status code: "
+                      f"{response.status_code})")
+                return None
+
             # Return the raw JSON response, let the calling tool handle its structure (dict or list)
             json_response = response.json()
             print(
@@ -1697,7 +1707,7 @@ async def get_current_user() -> str:
 async def get_user_collections(
     username: str,
     subject_type: Optional[SubjectType] = None,
-    collection_type: Optional[int] = None,
+    collection_type: Optional[CollectionType] = None,
     limit: int = 30,
     offset: int = 0,
 ) -> str:
@@ -1801,7 +1811,7 @@ async def get_user_subject_collection(username: str, subject_id: int) -> str:
 @mcp.tool()
 async def update_subject_collection(
     subject_id: int,
-    collection_type: Optional[int] = None,
+    collection_type: Optional[CollectionType] = None,
     ep_status: Optional[int] = None,
     vol_status: Optional[int] = None,
     rating: Optional[int] = None,
@@ -1829,7 +1839,7 @@ async def update_subject_collection(
 
     json_body: Dict[str, Any] = {}
     if collection_type is not None:
-        json_body["type"] = collection_type
+        json_body["type"] = int(collection_type)
     if ep_status is not None:
         json_body["ep_status"] = ep_status
     if vol_status is not None:
@@ -1927,7 +1937,7 @@ async def get_user_episode_collection(
 async def update_episode_collection(
     subject_id: int,
     episode_ids: List[int],
-    episode_type: int = 1,
+    collection_type: EpisodeCollectionType = EpisodeCollectionType.WATCHED,
 ) -> str:
     """
     Update the collection status for episodes.
@@ -1938,7 +1948,7 @@ async def update_episode_collection(
     Args:
         subject_id: The subject ID.
         episode_ids: List of episode IDs to update.
-        episode_type: Collection status (0 or 1). Defaults to 1 (Watched).
+        collection_type: Collection status (0 or 1). Defaults to 1 (Watched).
 
     Returns:
         Success message or error.
@@ -1948,7 +1958,7 @@ async def update_episode_collection(
 
     json_body = {
         "episode_id": episode_ids,
-        "type": episode_type,
+        "type": int(collection_type),
     }
 
     response = await make_bangumi_request(
@@ -1999,14 +2009,14 @@ async def get_single_episode_collection(episode_id: int) -> str:
 
 @mcp.tool()
 async def update_single_episode_collection(
-    episode_id: int, episode_type: int = 1
+    episode_id: int, collection_type: EpisodeCollectionType = EpisodeCollectionType.WATCHED
 ) -> str:
     """
     Update the collection status for a single episode.
 
     Args:
         episode_id: The episode ID.
-        episode_type: Collection status (0 or 1). Defaults to 1 (Watched).
+        collection_type: Collection status (0 or 1). Defaults to 1 (Watched).
 
     Returns:
         Success message or error.
@@ -2014,7 +2024,7 @@ async def update_single_episode_collection(
     if not BANGUMI_TOKEN:
         return "BANGUMI_TOKEN is required for this operation."
 
-    json_body = {"type": episode_type}
+    json_body = {"type": int(collection_type)}
 
     response = await make_bangumi_request(
         method="PUT",
@@ -2732,7 +2742,7 @@ async def add_subject_to_index(
         return "BANGUMI_TOKEN is required for this operation."
 
     json_body: Dict[str, Any] = {"subject_id": subject_id}
-    if comment:
+    if comment is not None:
         json_body["comment"] = comment
 
     response = await make_bangumi_request(
@@ -2767,8 +2777,11 @@ async def update_index_subject(
         return "BANGUMI_TOKEN is required for this operation."
 
     json_body: Dict[str, Any] = {}
-    if comment:
+    if comment is not None:
         json_body["comment"] = comment
+
+    if not json_body:
+        return "No updates were provided; specify at least one field to update."
 
     response = await make_bangumi_request(
         method="PUT",
