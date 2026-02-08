@@ -1,7 +1,7 @@
 """Person-related tools."""
 import os
-from typing import Any, Dict, List, Optional
-from ..config import BANGUMI_TOKEN
+from typing import List, Optional
+
 from ..enums import PersonType, PersonCareer, BloodType, SubjectType, CharacterType
 from ..utils.api_client import make_bangumi_request, handle_api_error_response
 from ..utils.formatters import format_person_summary

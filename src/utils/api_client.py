@@ -1,4 +1,5 @@
 """HTTP client utilities for Bangumi API."""
+import asyncio
 import json
 import os
 from typing import Any, Dict, Optional
@@ -6,6 +7,60 @@ from typing import Any, Dict, Optional
 import httpx
 
 from ..config import BANGUMI_API_BASE, USER_AGENT
+
+# HTTP client timeout in seconds
+HTTP_CLIENT_TIMEOUT = 30.0
+
+# Shared httpx client for connection pooling
+_client: Optional[httpx.AsyncClient] = None
+
+# Initialize lock at module level, handling case where no event loop exists yet
+try:
+    _client_lock = asyncio.Lock()
+except RuntimeError:
+    # No event loop yet, will be created lazily on first use
+    _client_lock = None
+
+
+async def _ensure_lock():
+    """Ensure the client lock is initialized."""
+    global _client_lock
+    if _client_lock is None:
+        _client_lock = asyncio.Lock()
+
+
+async def get_http_client() -> httpx.AsyncClient:
+    """
+    Get or create the shared HTTP client.
+    
+    Uses an asyncio.Lock for async-safe singleton pattern with connection pooling.
+    The timeout applies to all requests made with this client.
+    """
+    global _client
+    
+    await _ensure_lock()
+    
+    async with _client_lock:
+        if _client is None:
+            _client = httpx.AsyncClient(follow_redirects=False, timeout=HTTP_CLIENT_TIMEOUT)
+    return _client
+
+
+async def close_http_client():
+    """
+    Close the shared HTTP client and release resources.
+    
+    Should be called during application shutdown to properly clean up
+    network connections and resources.
+    """
+    global _client
+    
+    await _ensure_lock()
+    
+    async with _client_lock:
+        if _client is not None:
+            await _client.aclose()
+            _client = None
 
 
 async def make_bangumi_request(
@@ -27,79 +82,66 @@ async def make_bangumi_request(
 
     url = f"{BANGUMI_API_BASE}{path}"
 
-    async with httpx.AsyncClient(follow_redirects=False) as client:
+    client = await get_http_client()
+    try:
+        response = await client.request(
+            method=method,
+            url=url,
+            params=query_params,
+            json=json_body,
+            headers=request_headers,
+        )
+
+        # Handle redirect responses (e.g., image endpoints) without attempting JSON parsing
+        # Only handle redirect statuses that are expected to carry a Location header
+        if response.status_code in (301, 302, 303, 307, 308):
+            location = response.headers.get("Location")
+            if location:
+                return {"Location": location}
+            return {
+                "error": f"{response.status_code} redirect without Location",
+                "status_code": response.status_code,
+            }
+
+        # Handle other 3xx codes that shouldn't have a Location header
+        if 300 <= response.status_code < 400:
+            return {
+                "error": f"Unexpected redirect status: {response.status_code}",
+                "status_code": response.status_code,
+            }
+
+        response.raise_for_status()
+
+        # Some successful responses (e.g., 204 No Content) may have an empty body; avoid JSON parsing then
+        if response.status_code == 204 or not response.content:
+            return None
+
+        # Return the raw JSON response, let the calling tool handle its structure (dict or list)
+        return response.json()
+    except httpx.HTTPStatusError as e:
+        error_msg = (
+            f"HTTP error occurred: {e.response.status_code} - {e.response.text}"
+        )
+        # Try to parse the error response body if it's JSON
         try:
-            print(
-                f"DEBUG: Making {method} request to {url} with params={query_params}, json={json_body}"
-            )
-            response = await client.request(
-                method=method,
-                url=url,
-                params=query_params,
-                json=json_body,
-                headers=request_headers,
-                timeout=30.0,
-            )
-
-            # Handle redirect responses (e.g., image endpoints) without attempting JSON parsing
-            # Only handle redirect statuses that are expected to carry a Location header
-            if response.status_code in (301, 302, 303, 307, 308):
-                location = response.headers.get("Location")
-                if location:
-                    return {"Location": location}
-                return {
-                    "error": f"{response.status_code} redirect without Location",
-                    "status_code": response.status_code,
-                }
-
-            # Handle other 3xx codes that shouldn't have a Location header
-            if 300 <= response.status_code < 400:
-                return {
-                    "error": f"Unexpected redirect status: {response.status_code}",
-                    "status_code": response.status_code,
-                }
-
-            response.raise_for_status()
-
-            # Some successful responses (e.g., 204 No Content) may have an empty body; avoid JSON parsing then
-            if response.status_code == 204 or not response.content:
-                print("DEBUG: Received empty response body (status code: "
-                      f"{response.status_code})")
-                return None
-
-            # Return the raw JSON response, let the calling tool handle its structure (dict or list)
-            json_response = response.json()
-            print(
-                f"DEBUG: Received response (type: {type(json_response)}, keys/length: {list(json_response.keys()) if isinstance(json_response, dict) else len(json_response) if isinstance(json_response, list) else 'N/A'})"
-            )
-            return json_response
-        except httpx.HTTPStatusError as e:
-            error_msg = (
-                f"HTTP error occurred: {e.response.status_code} - {e.response.text}"
-            )
-            print(f"ERROR: {error_msg}")
-            # Try to parse the error response body if it's JSON
-            try:
-                error_details = e.response.json()
-                return {
-                    "error": error_msg,
-                    "status_code": e.response.status_code,
-                    "details": error_details,
-                }
-            except json.JSONDecodeError:
-                return {
-                    "error": error_msg,
-                    "status_code": e.response.status_code,
-                    "details": e.response.text,
-                }
-        except httpx.RequestError as e:
-            error_msg = f"An error occurred while requesting {e.request.url!r}: {e}"
-            print(f"ERROR: {error_msg}")
-            return {"error": error_msg}
-        except Exception as e:
-            error_msg = f"An unexpected error occurred: {e}"
-            print(f"ERROR: {error_msg}")
-            return {"error": error_msg}
+            error_details = e.response.json()
+            return {
+                "error": error_msg,
+                "status_code": e.response.status_code,
+                "details": error_details,
+            }
+        except json.JSONDecodeError:
+            return {
+                "error": error_msg,
+                "status_code": e.response.status_code,
+                "details": e.response.text,
+            }
+    except httpx.RequestError as e:
+        error_msg = f"An error occurred while requesting {e.request.url!r}: {e}"
+        return {"error": error_msg}
+    except Exception as e:
+        error_msg = f"An unexpected error occurred: {e}"
+        return {"error": error_msg}
 
 
 def handle_api_error_response(response: Any) -> Optional[str]:
@@ -131,7 +173,8 @@ def handle_api_error_response(response: Any) -> Optional[str]:
         # Check for specific error fields if structure varies
         # Add more checks here if other error dictionary formats are observed
         # Example: if "message" in response and "code" in response: return f"API Error {response['code']}: {response['message']}"
-        pass  # If it's a dictionary but doesn't match known error formats, assume it's a valid data response for now
+        # Explicitly return None if dictionary doesn't match known error formats, indicating valid data response
+        return None
 
     # If it's not a dictionary, or it's a dictionary that doesn't match known error formats, assume it's not an error
     return None

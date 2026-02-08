@@ -1,4 +1,7 @@
 """Bangumi MCP Server - Model Context Protocol server for Bangumi TV API."""
+import asyncio
+import atexit
+
 from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
 
@@ -20,6 +23,7 @@ from src.tools import (
     index_tools,
 )
 from src.prompts import workflow_prompts
+from src.utils.api_client import close_http_client
 
 # Register resources
 openapi_resource.register(mcp)
@@ -36,9 +40,30 @@ index_tools.register(mcp)
 # Register prompts
 workflow_prompts.register(mcp)
 
+
+def cleanup():
+    """Cleanup function to close HTTP client on shutdown."""
+    try:
+        # Check if an event loop is currently running
+        try:
+            asyncio.get_running_loop()
+            # If we get here, loop is running - we can't block, so return
+            return
+        except RuntimeError:
+            # No running loop, safe to proceed with cleanup
+            pass
+        
+        # Use asyncio.run() which handles event loop creation and cleanup
+        asyncio.run(close_http_client())
+    except Exception:
+        # Best effort cleanup - fail silently
+        pass
+
+
+# Register cleanup handler
+atexit.register(cleanup)
+
 # --- Running the server ---
 
 if __name__ == "__main__":
-    print("Starting Bangumi MCP Server...")
     mcp.run(transport="stdio")
-    print("Bangumi MCP Server stopped.")

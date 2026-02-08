@@ -1,6 +1,7 @@
 """Revision/history tools."""
 import json
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict
+
 from ..utils.api_client import make_bangumi_request, handle_api_error_response
 
 

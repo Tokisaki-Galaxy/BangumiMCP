@@ -1,7 +1,6 @@
 """Subject and episode related tools."""
-import os
-from typing import Any, Dict, List, Optional
-from ..config import BANGUMI_TOKEN
+from typing import Any, Dict, Optional
+
 from ..enums import SubjectType, EpType, PersonType, CharacterType
 from ..utils.api_client import make_bangumi_request, handle_api_error_response
 from ..utils.formatters import format_subject_summary
