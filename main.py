@@ -44,19 +44,32 @@ workflow_prompts.register(mcp)
 def cleanup():
     """Cleanup function to close HTTP client on shutdown."""
     try:
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            # If loop is running, schedule the cleanup
-            loop.create_task(close_http_client())
-        else:
-            # If loop is not running, run it to execute cleanup
-            loop.run_until_complete(close_http_client())
-    except Exception:
-        # If there's no event loop or it's closed, try creating a new one
+        # Try to use existing event loop if available
         try:
-            asyncio.run(close_http_client())
+            loop = asyncio.get_running_loop()
+            # Loop is running, we can't block here, cleanup will happen via atexit
+            return
+        except RuntimeError:
+            # No running loop, we can safely create one
+            pass
+        
+        # Try to get existing event loop (not running)
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_closed():
+                # Loop is closed, create a new one
+                asyncio.run(close_http_client())
+            else:
+                # Loop exists but not running, use it
+                loop.run_until_complete(close_http_client())
         except Exception:
-            pass  # Best effort cleanup
+            # If all else fails, create new event loop
+            try:
+                asyncio.run(close_http_client())
+            except Exception:
+                pass  # Best effort cleanup
+    except Exception:
+        pass  # Silent failure for cleanup
 
 
 # Register cleanup handler
@@ -65,8 +78,4 @@ atexit.register(cleanup)
 # --- Running the server ---
 
 if __name__ == "__main__":
-    try:
-        mcp.run(transport="stdio")
-    finally:
-        # Ensure cleanup runs even if run() exits normally
-        cleanup()
+    mcp.run(transport="stdio")
