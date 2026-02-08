@@ -315,16 +315,16 @@ def register(mcp):
             return f"Unexpected API response format: {response}"
 
         ep = response
-        ep_type = ep.get("type")
+        ep_collection_type = ep.get("type")
         # Map EpisodeCollectionType correctly: 1=Wish, 2=Done, 3=Dropped
-        if ep_type == 1:
+        if ep_collection_type == 1:
             status = "Wish"
-        elif ep_type == 2:
+        elif ep_collection_type == 2:
             status = "Done"
-        elif ep_type == 3:
+        elif ep_collection_type == 3:
             status = "Dropped"
         else:
-            status = f"Unknown (status={ep_type})"
+            status = f"Unknown (type={ep_collection_type})"
         details = f"Episode {episode_id} collection:\n"
         details += f"  Status: {status}\n"
 

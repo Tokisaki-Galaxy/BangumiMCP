@@ -42,11 +42,7 @@ async def close_http_client():
     """
     global _client, _client_lock
     
-    # If client was never initialized, nothing to close
-    if _client is None:
-        return
-    
-    # Ensure lock is initialized (should already be if client exists)
+    # Ensure lock is initialized before checking/closing client
     if _client_lock is None:
         _client_lock = asyncio.Lock()
     
@@ -166,7 +162,8 @@ def handle_api_error_response(response: Any) -> Optional[str]:
         # Check for specific error fields if structure varies
         # Add more checks here if other error dictionary formats are observed
         # Example: if "message" in response and "code" in response: return f"API Error {response['code']}: {response['message']}"
-        return None  # If it's a dictionary but doesn't match known error formats, assume it's a valid data response for now
+        # Explicitly return None if dictionary doesn't match known error formats, indicating valid data response
+        return None
 
     # If it's not a dictionary, or it's a dictionary that doesn't match known error formats, assume it's not an error
     return None
