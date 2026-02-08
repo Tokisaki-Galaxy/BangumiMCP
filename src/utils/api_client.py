@@ -41,8 +41,15 @@ async def close_http_client():
     network connections and resources.
     """
     global _client, _client_lock
+    
+    # If client was never initialized, nothing to close
+    if _client is None:
+        return
+    
+    # Ensure lock is initialized (should already be if client exists)
     if _client_lock is None:
         _client_lock = asyncio.Lock()
+    
     async with _client_lock:
         if _client is not None:
             await _client.aclose()
