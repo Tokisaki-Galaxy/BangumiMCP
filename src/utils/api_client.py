@@ -1,4 +1,5 @@
 """HTTP client utilities for Bangumi API."""
+import asyncio
 import json
 import os
 from typing import Any, Dict, Optional
@@ -9,14 +10,14 @@ from ..config import BANGUMI_API_BASE, USER_AGENT
 
 # Shared httpx client for connection pooling
 _client: Optional[httpx.AsyncClient] = None
-_client_lock: Optional[object] = None  # Will be initialized as asyncio.Lock on first use
+_client_lock: Optional[asyncio.Lock] = None  # Lazy-initialized on first use
 
 
 async def get_http_client() -> httpx.AsyncClient:
     """
     Get or create the shared HTTP client.
     
-    Uses a lazy-initialized asyncio.Lock for thread-safe singleton pattern
+    Uses a lazy-initialized asyncio.Lock for async-safe singleton pattern
     with connection pooling. The timeout (30.0s) applies to all requests
     made with this client.
     """
@@ -24,14 +25,11 @@ async def get_http_client() -> httpx.AsyncClient:
     
     # Lazily create the lock when first needed within an async context
     if _client_lock is None:
-        import asyncio
         _client_lock = asyncio.Lock()
     
-    if _client is None:
-        async with _client_lock:
-            # Double-check after acquiring lock
-            if _client is None:
-                _client = httpx.AsyncClient(follow_redirects=False, timeout=30.0)
+    async with _client_lock:
+        if _client is None:
+            _client = httpx.AsyncClient(follow_redirects=False, timeout=30.0)
     return _client
 
 
@@ -43,14 +41,12 @@ async def close_http_client():
     network connections and resources.
     """
     global _client, _client_lock
-    if _client is not None:
-        if _client_lock is None:
-            import asyncio
-            _client_lock = asyncio.Lock()
-        async with _client_lock:
-            if _client is not None:
-                await _client.aclose()
-                _client = None
+    if _client_lock is None:
+        _client_lock = asyncio.Lock()
+    async with _client_lock:
+        if _client is not None:
+            await _client.aclose()
+            _client = None
 
 
 async def make_bangumi_request(

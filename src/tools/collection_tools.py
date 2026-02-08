@@ -241,7 +241,7 @@ def register(mcp):
             elif status == 3:
                 status_str = "Dropped"
             else:
-                status_str = f"Unknown (type={status})"
+                status_str = f"Unknown (status={status})"
             lines.append(f"  [{type_str}] {name} - {status_str}")
 
         return "\n".join(lines)
@@ -324,7 +324,7 @@ def register(mcp):
         elif ep_type == 3:
             status = "Dropped"
         else:
-            status = f"Unknown (type={ep_type})"
+            status = f"Unknown (status={ep_type})"
         details = f"Episode {episode_id} collection:\n"
         details += f"  Status: {status}\n"
 

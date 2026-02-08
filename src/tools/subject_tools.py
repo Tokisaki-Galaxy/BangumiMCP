@@ -1,5 +1,5 @@
 """Subject and episode related tools."""
-from typing import Any, Dict, Optional
+from typing import Optional
 
 from ..enums import SubjectType, EpType, PersonType, CharacterType
 from ..utils.api_client import make_bangumi_request, handle_api_error_response
