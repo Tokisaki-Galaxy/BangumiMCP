@@ -6,12 +6,12 @@ from ..enums import SubjectType, CollectionType, EpisodeCollectionType, EpType
 from ..utils.api_client import make_bangumi_request, handle_api_error_response
 
 
-def _format_episode_collection_status(status_value: int) -> str:
+def _format_episode_collection_status(status_value: Optional[int]) -> str:
     """
     Format episode collection status value to human-readable string.
     
     Args:
-        status_value: EpisodeCollectionType enum value (1=Wish, 2=Done, 3=Dropped)
+        status_value: EpisodeCollectionType enum value (1=Wish, 2=Done, 3=Dropped), or None
     
     Returns:
         Human-readable status string

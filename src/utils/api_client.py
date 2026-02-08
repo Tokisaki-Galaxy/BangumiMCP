@@ -13,21 +13,32 @@ HTTP_CLIENT_TIMEOUT = 30.0
 
 # Shared httpx client for connection pooling
 _client: Optional[httpx.AsyncClient] = None
-_client_lock: Optional[asyncio.Lock] = None  # Lazy-initialized on first use
+
+# Initialize lock at module level, handling case where no event loop exists yet
+try:
+    _client_lock = asyncio.Lock()
+except RuntimeError:
+    # No event loop yet, will be created lazily on first use
+    _client_lock = None
+
+
+async def _ensure_lock():
+    """Ensure the client lock is initialized."""
+    global _client_lock
+    if _client_lock is None:
+        _client_lock = asyncio.Lock()
 
 
 async def get_http_client() -> httpx.AsyncClient:
     """
     Get or create the shared HTTP client.
     
-    Uses a lazy-initialized asyncio.Lock for async-safe singleton pattern
-    with connection pooling. The timeout applies to all requests made with this client.
+    Uses an asyncio.Lock for async-safe singleton pattern with connection pooling.
+    The timeout applies to all requests made with this client.
     """
-    global _client, _client_lock
+    global _client
     
-    # Lazily create the asyncio lock - safe in single-threaded async context
-    if _client_lock is None:
-        _client_lock = asyncio.Lock()
+    await _ensure_lock()
     
     async with _client_lock:
         if _client is None:
@@ -42,11 +53,9 @@ async def close_http_client():
     Should be called during application shutdown to properly clean up
     network connections and resources.
     """
-    global _client, _client_lock
+    global _client
     
-    # Lazily create the asyncio lock - safe in single-threaded async context
-    if _client_lock is None:
-        _client_lock = asyncio.Lock()
+    await _ensure_lock()
     
     async with _client_lock:
         if _client is not None:
