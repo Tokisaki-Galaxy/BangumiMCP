@@ -2,7 +2,6 @@
 import asyncio
 import json
 import os
-import threading
 from typing import Any, Dict, Optional
 
 import httpx
@@ -15,7 +14,6 @@ HTTP_CLIENT_TIMEOUT = 30.0
 # Shared httpx client for connection pooling
 _client: Optional[httpx.AsyncClient] = None
 _client_lock: Optional[asyncio.Lock] = None  # Lazy-initialized on first use
-_init_lock = threading.Lock()  # Thread-safe lock for initializing _client_lock
 
 
 async def get_http_client() -> httpx.AsyncClient:
@@ -27,11 +25,9 @@ async def get_http_client() -> httpx.AsyncClient:
     """
     global _client, _client_lock
     
-    # Lazily create the asyncio lock in a thread-safe manner
+    # Lazily create the asyncio lock - safe in single-threaded async context
     if _client_lock is None:
-        with _init_lock:
-            if _client_lock is None:
-                _client_lock = asyncio.Lock()
+        _client_lock = asyncio.Lock()
     
     async with _client_lock:
         if _client is None:
@@ -48,11 +44,9 @@ async def close_http_client():
     """
     global _client, _client_lock
     
-    # Lazily create the asyncio lock in a thread-safe manner
+    # Lazily create the asyncio lock - safe in single-threaded async context
     if _client_lock is None:
-        with _init_lock:
-            if _client_lock is None:
-                _client_lock = asyncio.Lock()
+        _client_lock = asyncio.Lock()
     
     async with _client_lock:
         if _client is not None:
