@@ -1,8 +1,7 @@
 """Character-related tools."""
 import os
-from typing import Any, Dict, List, Optional
+from typing import Optional
 
-from ..config import BANGUMI_TOKEN
 from ..enums import CharacterType, SubjectType, PersonType, BloodType
 from ..utils.api_client import make_bangumi_request, handle_api_error_response
 from ..utils.formatters import format_character_summary

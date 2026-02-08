@@ -1,7 +1,7 @@
 """Collection management tools."""
 import os
 from typing import Any, Dict, List, Optional
-from ..config import BANGUMI_TOKEN
+
 from ..enums import SubjectType, CollectionType, EpisodeCollectionType, EpType
 from ..utils.api_client import make_bangumi_request, handle_api_error_response
 
@@ -233,7 +233,15 @@ def register(mcp):
             except ValueError:
                 type_str = "?"
 
-            status_str = "Watched" if status == 1 else "Not Watched"
+            # Map EpisodeCollectionType correctly: 1=Wish, 2=Done, 3=Dropped
+            if status == 1:
+                status_str = "Wish"
+            elif status == 2:
+                status_str = "Done"
+            elif status == 3:
+                status_str = "Dropped"
+            else:
+                status_str = f"Unknown (type={status})"
             lines.append(f"  [{type_str}] {name} - {status_str}")
 
         return "\n".join(lines)
@@ -307,7 +315,16 @@ def register(mcp):
             return f"Unexpected API response format: {response}"
 
         ep = response
-        status = "Watched" if ep.get("type") == 1 else "Not Watched"
+        ep_type = ep.get("type")
+        # Map EpisodeCollectionType correctly: 1=Wish, 2=Done, 3=Dropped
+        if ep_type == 1:
+            status = "Wish"
+        elif ep_type == 2:
+            status = "Done"
+        elif ep_type == 3:
+            status = "Dropped"
+        else:
+            status = f"Unknown (type={ep_type})"
         details = f"Episode {episode_id} collection:\n"
         details += f"  Status: {status}\n"
 

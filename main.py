@@ -39,6 +39,4 @@ workflow_prompts.register(mcp)
 # --- Running the server ---
 
 if __name__ == "__main__":
-    print("Starting Bangumi MCP Server...")
     mcp.run(transport="stdio")
-    print("Bangumi MCP Server stopped.")
