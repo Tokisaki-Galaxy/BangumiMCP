@@ -2,15 +2,20 @@
 import asyncio
 import json
 import os
+import threading
 from typing import Any, Dict, Optional
 
 import httpx
 
 from ..config import BANGUMI_API_BASE, USER_AGENT
 
+# HTTP client timeout in seconds
+HTTP_CLIENT_TIMEOUT = 30.0
+
 # Shared httpx client for connection pooling
 _client: Optional[httpx.AsyncClient] = None
 _client_lock: Optional[asyncio.Lock] = None  # Lazy-initialized on first use
+_init_lock = threading.Lock()  # Thread-safe lock for initializing _client_lock
 
 
 async def get_http_client() -> httpx.AsyncClient:
@@ -18,18 +23,19 @@ async def get_http_client() -> httpx.AsyncClient:
     Get or create the shared HTTP client.
     
     Uses a lazy-initialized asyncio.Lock for async-safe singleton pattern
-    with connection pooling. The timeout (30.0s) applies to all requests
-    made with this client.
+    with connection pooling. The timeout applies to all requests made with this client.
     """
     global _client, _client_lock
     
-    # Lazily create the lock when first needed within an async context
+    # Lazily create the asyncio lock in a thread-safe manner
     if _client_lock is None:
-        _client_lock = asyncio.Lock()
+        with _init_lock:
+            if _client_lock is None:
+                _client_lock = asyncio.Lock()
     
     async with _client_lock:
         if _client is None:
-            _client = httpx.AsyncClient(follow_redirects=False, timeout=30.0)
+            _client = httpx.AsyncClient(follow_redirects=False, timeout=HTTP_CLIENT_TIMEOUT)
     return _client
 
 
@@ -42,9 +48,11 @@ async def close_http_client():
     """
     global _client, _client_lock
     
-    # Ensure lock is initialized before checking/closing client
+    # Lazily create the asyncio lock in a thread-safe manner
     if _client_lock is None:
-        _client_lock = asyncio.Lock()
+        with _init_lock:
+            if _client_lock is None:
+                _client_lock = asyncio.Lock()
     
     async with _client_lock:
         if _client is not None:

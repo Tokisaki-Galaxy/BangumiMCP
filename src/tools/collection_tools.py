@@ -6,6 +6,26 @@ from ..enums import SubjectType, CollectionType, EpisodeCollectionType, EpType
 from ..utils.api_client import make_bangumi_request, handle_api_error_response
 
 
+def _format_episode_collection_status(status_value: int) -> str:
+    """
+    Format episode collection status value to human-readable string.
+    
+    Args:
+        status_value: EpisodeCollectionType enum value (1=Wish, 2=Done, 3=Dropped)
+    
+    Returns:
+        Human-readable status string
+    """
+    if status_value == 1:
+        return "Wish"
+    elif status_value == 2:
+        return "Done"
+    elif status_value == 3:
+        return "Dropped"
+    else:
+        return f"Unknown (status={status_value})"
+
+
 def register(mcp):
     """Register all collection-related tools with the MCP server."""
 
@@ -233,15 +253,7 @@ def register(mcp):
             except ValueError:
                 type_str = "?"
 
-            # Map EpisodeCollectionType correctly: 1=Wish, 2=Done, 3=Dropped
-            if status == 1:
-                status_str = "Wish"
-            elif status == 2:
-                status_str = "Done"
-            elif status == 3:
-                status_str = "Dropped"
-            else:
-                status_str = f"Unknown (status={status})"
+            status_str = _format_episode_collection_status(status)
             lines.append(f"  [{type_str}] {name} - {status_str}")
 
         return "\n".join(lines)
@@ -316,15 +328,7 @@ def register(mcp):
 
         ep = response
         ep_collection_type = ep.get("type")
-        # Map EpisodeCollectionType correctly: 1=Wish, 2=Done, 3=Dropped
-        if ep_collection_type == 1:
-            status = "Wish"
-        elif ep_collection_type == 2:
-            status = "Done"
-        elif ep_collection_type == 3:
-            status = "Dropped"
-        else:
-            status = f"Unknown (type={ep_collection_type})"
+        status = _format_episode_collection_status(ep_collection_type)
         details = f"Episode {episode_id} collection:\n"
         details += f"  Status: {status}\n"
 
