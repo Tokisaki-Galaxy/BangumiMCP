@@ -1,4 +1,5 @@
 """HTTP client utilities for Bangumi API."""
+import asyncio
 import json
 import os
 from typing import Any, Dict, Optional
@@ -9,22 +10,37 @@ from ..config import BANGUMI_API_BASE, USER_AGENT
 
 # Shared httpx client for connection pooling
 _client: Optional[httpx.AsyncClient] = None
+_client_lock = asyncio.Lock()
 
 
-def get_http_client() -> httpx.AsyncClient:
-    """Get or create the shared HTTP client."""
+async def get_http_client() -> httpx.AsyncClient:
+    """
+    Get or create the shared HTTP client.
+    
+    Thread-safe singleton pattern for connection pooling.
+    """
     global _client
     if _client is None:
-        _client = httpx.AsyncClient(follow_redirects=False, timeout=30.0)
+        async with _client_lock:
+            # Double-check after acquiring lock
+            if _client is None:
+                _client = httpx.AsyncClient(follow_redirects=False, timeout=30.0)
     return _client
 
 
 async def close_http_client():
-    """Close the shared HTTP client."""
+    """
+    Close the shared HTTP client and release resources.
+    
+    Should be called during application shutdown to properly clean up
+    network connections and resources.
+    """
     global _client
     if _client is not None:
-        await _client.aclose()
-        _client = None
+        async with _client_lock:
+            if _client is not None:
+                await _client.aclose()
+                _client = None
 
 
 async def make_bangumi_request(
@@ -46,7 +62,7 @@ async def make_bangumi_request(
 
     url = f"{BANGUMI_API_BASE}{path}"
 
-    client = get_http_client()
+    client = await get_http_client()
     try:
         response = await client.request(
             method=method,
