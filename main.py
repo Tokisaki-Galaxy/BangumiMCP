@@ -1,6 +1,7 @@
 """Bangumi MCP Server - Model Context Protocol server for Bangumi TV API."""
 import asyncio
 import atexit
+import os
 
 from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
@@ -66,4 +67,5 @@ atexit.register(cleanup)
 # --- Running the server ---
 
 if __name__ == "__main__":
-    mcp.run(transport="stdio")
+    transport = os.getenv("MCP_TRANSPORT", "stdio")
+    mcp.run(transport=transport)
