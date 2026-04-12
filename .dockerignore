@@ -4,7 +4,6 @@ __pycache__
 *.pyc
 .venv
 .env
-README.md
 .gitignore
 Dockerfile
 .dockerignore
