@@ -1,12 +1,12 @@
 """HTTP client utilities for Bangumi API."""
 import asyncio
 import json
-import os
 from typing import Any, Dict, Optional
 
 import httpx
 
-from ..config import BANGUMI_API_BASE, USER_AGENT
+from config import BANGUMI_API_BASE, USER_AGENT
+from utils.request_auth import get_effective_bangumi_token
 
 # HTTP client timeout in seconds
 HTTP_CLIENT_TIMEOUT = 30.0
@@ -75,8 +75,8 @@ async def make_bangumi_request(
     request_headers["User-Agent"] = USER_AGENT
     request_headers["Accept"] = "application/json"
 
-    # Dynamically get token from environment to avoid stale imports
-    bangumi_token = os.getenv("BANGUMI_TOKEN")
+    # Prefer the request-scoped token, then fall back to the local env token.
+    bangumi_token = get_effective_bangumi_token()
     if bangumi_token:
         request_headers["Authorization"] = f"Bearer {bangumi_token}"
 
