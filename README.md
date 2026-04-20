@@ -76,6 +76,7 @@ Use `wrangler.jsonc` and `src/worker.py` to deploy a public MCP endpoint on Clou
 - MCP endpoint: `/mcp`
 - Send `Authorization: Bearer <your Bangumi access token>` on every request
 - The worker is stateless and does not store user tokens
+- `python_modules/` is generated automatically by `npm install` / Cloudflare build via `postinstall`
 - Keep local stdio by running `uv run main.py`
 - Sync vendored Python deps with `npm run sync`
 - Start local Worker dev with `npm run dev` (syncs `python_modules/` and then runs `wrangler dev`)
